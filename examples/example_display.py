@@ -127,6 +127,7 @@ if __name__ == '__main__':
                         help="Flag to debug execute step by step with one key press",
                         type=bool,
                         default=False)
+    parser.add_argument('--skip_red_cursor', action='store_true', help='Flag to skip red cursor.')
 
     args = parser.parse_args()
 
@@ -148,7 +149,7 @@ if __name__ == '__main__':
         print("Unknown argument")
         sys.exit(1)
 
-    env = Environment(content) if content else RedCursorEnvironment(None)
+    env = Environment(content, skip_red_cursor=args.skip_red_cursor) if content else RedCursorEnvironment(None)
     env.render()  # env.window is created here
 
     handler = KeyHandler(env, args.step_debug)
