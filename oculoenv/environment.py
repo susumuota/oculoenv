@@ -15,6 +15,9 @@ from .objmesh import ObjMesh
 from .utils import clamp, rad2deg, deg2rad
 from .geom import Matrix4
 
+from .contents.point_to_target_content import PointToTargetContent
+from .contents.change_detection_content import ChangeDetectionContent
+
 BG_COLOR = np.array([0.45, 0.82, 1.0, 1.0])
 WHITE_COLOR = np.array([1.0, 1.0, 1.0])
 
@@ -137,7 +140,7 @@ class Camera(object):
 class Environment(object):
     """ Task Environmenet class. """
 
-    def __init__(self, content, off_buffer_width=128, on_buffer_width=640):
+    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False):
         """ Oculomotor task environment class.
 
         Arguments:
@@ -145,7 +148,9 @@ class Environment(object):
           off_buffer_width: (int) pixel width and height size of offscreen render buffer.
           on_buffer_width: (int) pixel width and height size of display window.
         """
-        
+
+        self.skip_red_cursor = skip_red_cursor
+
         # Invisible window to render into (shadow OpenGL context)
         self.shadow_window = pyglet.window.Window(
             width=1, height=1, visible=False)
@@ -201,7 +206,12 @@ class Environment(object):
         
         self.content.reset()
         self.camera.reset()
-        return self._get_observation()
+        obs = self._get_observation()
+
+        if self.skip_red_cursor and self._is_start_phase():
+            obs, reward, done, info = self._step_to_center(obs) # skip!!!
+
+        return obs
 
     def _calc_local_focus_pos(self, camera_forward_v):
         """ Calculate local coordinate of view focus point on the content panel. """
@@ -241,7 +251,20 @@ class Environment(object):
 
         obs = self._get_observation()
 
+        if self.skip_red_cursor and self._is_start_phase():
+            obs, _, done, info = self._step_to_center(obs) # skip!!! don't update reward!
+
         return obs, reward, done, info
+
+    def _step_to_center(self, obs):
+        '''this is a cheat code.'''
+        return self.step([-obs['angle'][0], -obs['angle'][1]])
+
+    def _is_start_phase(self):
+        if type(self.content) is ChangeDetectionContent:
+            return self.content.current_phase == self.content.start_phase
+        else:
+            return self.content.phase == 0 # PHASE_START == 0
 
     def close(self):
         pass
@@ -347,3 +370,41 @@ class Environment(object):
         glPopMatrix()
 
         return frame_buffer.read()
+
+
+class RedCursorEnvironment(Environment):
+    # TODO: 0.5 is enough?
+    CAMERA_HORIZONTAL_ANGLE_RAND_MAX = 1.0 * CAMERA_HORIZONTAL_ANGLE_MAX
+    CAMERA_VERTICAL_ANGLE_RAND_MAX = 1.0 * CAMERA_VERTICAL_ANGLE_MAX
+
+    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False):
+        assert content == None # ignore content!!!
+        assert skip_red_cursor == False
+        super().__init__(PointToTargetContent(), off_buffer_width, on_buffer_width, False)
+        self.reaction_step = 0
+
+    def step(self, action):
+        obs, reward, done, info = super().step(action)
+        self.reaction_step += 1
+        if self.content.phase == 1: # PHASE_TARGET
+             # skip to the target!!!
+            reward, done, info = self.content.step([self.content.target_sprite.pos_x, self.content.target_sprite.pos_y])
+            assert self.content.phase == 0 # PHASE_START
+            assert reward == 2
+            assert info['reaction_step'] == 1
+            reward = 1
+            info['reaction_step'] = self.reaction_step
+            self.reaction_step = 0
+            # randomly change camera angle.
+            self.camera.cur_angle_h = 0
+            self.camera.cur_angle_v = 0
+            rand_h = (np.random.rand() * 2.0 - 1.0) * self.CAMERA_HORIZONTAL_ANGLE_RAND_MAX
+            rand_v = (np.random.rand() * 2.0 - 1.0) * self.CAMERA_VERTICAL_ANGLE_RAND_MAX
+            self.camera.change_angle(rand_h, rand_v)
+            obs = self._get_observation()
+        return obs, reward, done, info
+
+    def reset(self):
+        obs = super().reset()
+        self.reaction_step = 0
+        return obs

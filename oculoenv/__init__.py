@@ -1,4 +1,4 @@
-from oculoenv.environment import Environment
+from oculoenv.environment import Environment, RedCursorEnvironment
 from oculoenv.contents.point_to_target_content import PointToTargetContent
 from oculoenv.contents.change_detection_content import ChangeDetectionContent
 from oculoenv.contents.odd_one_out_content import OddOneOutContent

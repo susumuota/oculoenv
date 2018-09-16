@@ -10,12 +10,13 @@ import numpy as np
 import argparse
 
 
-from oculoenv import Environment
+from oculoenv import Environment, RedCursorEnvironment
 from oculoenv import PointToTargetContent, ChangeDetectionContent, OddOneOutContent, VisualSearchContent, \
     MultipleObjectTrackingContent, RandomDotMotionDiscriminationContent
 
 
 class Contents(object):
+    RED_CURSOR = -1
     POINT_TO_TARGET = 1
     CHANGE_DETECTION = 2
     ODD_ONE_OUT = 3
@@ -141,11 +142,13 @@ if __name__ == '__main__':
         content = MultipleObjectTrackingContent()
     elif args.content == Contents.RANDOM_DOT_MOTION_DISCRIMINATION:
         content = RandomDotMotionDiscriminationContent()
+    elif args.content == Contents.RED_CURSOR:
+        content = None
     else:
         print("Unknown argument")
         sys.exit(1)
 
-    env = Environment(content)
+    env = Environment(content) if content else RedCursorEnvironment(None)
     env.render()  # env.window is created here
 
     handler = KeyHandler(env, args.step_debug)
