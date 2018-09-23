@@ -120,7 +120,8 @@ if __name__ == '__main__':
     parser.add_argument("--content", help="\n1: Point To Target\n2: Change Detection\n"
                         + "3: Odd One Out\n4: Visual Search\n"
                         + "5: Multiple Object Tracking\n"
-                        + "6: Random Dot Motion Descrimination",
+                        + "6: Random Dot Motion Descrimination\n"
+                        + "-1: Red Cursor",
                         type=int,
                         default=1)
     parser.add_argument("--step_debug",
