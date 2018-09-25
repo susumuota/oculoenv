@@ -262,7 +262,7 @@ class Environment(object):
         obs = self._get_observation()
 
         if self.skip_red_cursor and self._is_start_phase():
-            obs, _, done, _ = self._step_to_center(obs) # skip!!! don't update reward and info!
+            obs, _, _, _ = self._step_to_center(obs) # skip!!! don't update reward, done and info!
 
         return obs, reward, done, info
 
