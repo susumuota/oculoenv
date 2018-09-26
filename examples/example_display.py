@@ -41,6 +41,8 @@ class KeyHandler(object):
         self.right_pressed = False
         self.up_pressed = False
         self.down_pressed = False
+        self.one_pressed = False
+        self.two_pressed = False
         self.esc_pressed = False
         
         pyglet.clock.schedule_interval(self.update, 1.0/60.0)
@@ -54,6 +56,10 @@ class KeyHandler(object):
             self.up_pressed = True
         elif symbol == key.DOWN:
             self.down_pressed = True
+        elif symbol == key._1:
+            self.one_pressed = True
+        elif symbol == key._2:
+            self.two_pressed = True
         elif symbol == key.ESCAPE:
             self.esc_pressed = True
 
@@ -69,6 +75,10 @@ class KeyHandler(object):
             self.up_pressed = False
         elif symbol == key.DOWN:
             self.down_pressed = False
+        elif symbol == key._1:
+            self.one_pressed = False
+        elif symbol == key._2:
+            self.two_pressed = False
         elif symbol == key.ESCAPE:
             self.esc_pressed = False
 
@@ -86,6 +96,10 @@ class KeyHandler(object):
             dv += delta_angle
         if self.down_pressed:
             dv -= delta_angle
+        if self.one_pressed:
+            self.env.retina = not self.env.retina
+        if self.two_pressed:
+            self.env.saliency = not self.env.saliency
         if self.esc_pressed:
             self.env.close()
             sys.exit(0)
