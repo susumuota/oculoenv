@@ -130,6 +130,7 @@ if __name__ == '__main__':
                         default=False)
     parser.add_argument('--skip_red_cursor', action='store_true', help='Flag to skip red cursor.')
     parser.add_argument('--retina', action='store_true', help='Flag to use retina image.')
+    parser.add_argument('--saliency', action='store_true', help='Flag to use saliency image.')
 
     args = parser.parse_args()
 
@@ -151,7 +152,7 @@ if __name__ == '__main__':
         print("Unknown argument")
         sys.exit(1)
 
-    env = Environment(content, skip_red_cursor=args.skip_red_cursor, retina=args.retina) if content else RedCursorEnvironment(None, retina=args.retina)
+    env = Environment(content, on_buffer_width=128, skip_red_cursor=args.skip_red_cursor, retina=args.retina, saliency=args.saliency) if content else RedCursorEnvironment(None, on_buffer_width=128, retina=args.retina, saliency=args.saliency)
     env.render()  # env.window is created here
 
     handler = KeyHandler(env, args.step_debug)

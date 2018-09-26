@@ -37,6 +37,9 @@ CAMERA_HORIZONTAL_ANGLE_MAX = deg2rad(45.0)
 
 PLANE_DISTANCE = 3.0  # Distance to content plane
 
+# copied from https://github.com/wbap/oculomotor/blob/master/application/functions/lip.py
+GAUSSIAN_KERNEL_SIZE = (5,5)
+
 
 class PlaneObject(object):
     def __init__(self):
@@ -141,7 +144,7 @@ class Camera(object):
 class Environment(object):
     """ Task Environmenet class. """
 
-    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False):
+    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False, saliency=False):
         """ Oculomotor task environment class.
 
         Arguments:
@@ -160,6 +163,7 @@ class Environment(object):
             self.on_gray_rates, self.on_inv_gray_rates = self._create_rate_datas(on_buffer_width, gain=0.5) # 640
             self.off_blur_rates, self.off_inv_blur_rates = self._create_rate_datas(off_buffer_width) # 128
             self.off_gray_rates, self.off_inv_gray_rates = self._create_rate_datas(off_buffer_width, gain=0.5) # 128
+        self.saliency = saliency
 
         # Invisible window to render into (shadow OpenGL context)
         self.shadow_window = pyglet.window.Window(
@@ -283,6 +287,10 @@ class Environment(object):
         img = self._render_sub(self.frame_buffer_off)
         if self.retina:
             img = self._create_retina_image(img, self.off_blur_rates, self.off_inv_blur_rates, self.off_gray_rates, self.off_inv_gray_rates)
+        if self.saliency:
+            img = self._get_saliency_map(img)
+            img = np.clip(img * 255.0, 0.0, 255.0).astype(np.uint8)
+            img = np.stack([img for _ in range(3)], axis=2)
         return img
 
     def render(self, mode='human', close=False):
@@ -295,6 +303,11 @@ class Environment(object):
 
         if self.retina:
             img = self._create_retina_image(img, self.on_blur_rates, self.on_inv_blur_rates, self.on_gray_rates, self.on_inv_gray_rates)
+
+        if self.saliency:
+            img = self._get_saliency_map(img)
+            img = np.clip(img * 255.0, 0.0, 255.0).astype(np.uint8)
+            img = np.stack([img for _ in range(3)], axis=2)
 
         if mode == 'rgb_array':
             return img
@@ -465,16 +478,74 @@ class Environment(object):
         gray_mix_image = blur_mix_image * gray_rates + gray_blur_image * inv_gray_rates
         return gray_mix_image.astype(np.uint8)
 
+    # copied from https://github.com/wbap/oculomotor/blob/master/application/functions/lip.py
+    def _get_saliency_magnitude(self, image):
+        # Calculate FFT
+        dft = cv2.dft(image.astype(np.float32), flags=cv2.DFT_COMPLEX_OUTPUT)
+        magnitude, angle = cv2.cartToPolar(dft[:, :, 0], dft[:, :, 1])
+
+        log_magnitude = np.log10(magnitude.clip(min=1e-10))
+
+        # Apply box filter
+        log_magnitude_filtered = cv2.blur(log_magnitude, ksize=(3, 3))
+
+        # Calculate residual
+        magnitude_residual = np.exp(log_magnitude - log_magnitude_filtered)
+
+        # Apply residual magnitude back to frequency domain
+        dft[:, :, 0], dft[:, :, 1] = cv2.polarToCart(magnitude_residual, angle)
+    
+        # Calculate Inverse FFT
+        image_processed = cv2.idft(dft)
+        magnitude, _ = cv2.cartToPolar(image_processed[:, :, 0],
+                                       image_processed[:, :, 1])
+        return magnitude
+
+    def _get_saliency_map(self, image):
+        resize_shape = (64, 64) # (h,w)
+
+        # Size argument of resize() is (w,h) while image shape is (h,w,c)
+        image_resized = cv2.resize(image, resize_shape[1::-1])
+        # (64,64,3)
+
+        saliency = np.zeros_like(image_resized, dtype=np.float32)
+        # (64,64,3)
+    
+        channel_size = image_resized.shape[2]
+    
+        for ch in range(channel_size):
+            ch_image = image_resized[:, :, ch]
+            saliency[:, :, ch] = self._get_saliency_magnitude(ch_image)
+
+        # Calclate max over channels
+        saliency = np.max(saliency, axis=2)
+        # (64,64)
+
+        saliency = cv2.GaussianBlur(saliency, GAUSSIAN_KERNEL_SIZE, sigmaX=8, sigmaY=0)
+
+        SALIENCY_ENHANCE_COEFF = 2.0 # Strong saliency contrst
+        #SALIENCY_ENHANCE_COEFF = 0.5 # Low saliency contrast, but sensible for weak saliency
+
+        # Emphasize saliency
+        saliency = (saliency ** SALIENCY_ENHANCE_COEFF)
+
+        # Normalize to 0.0~1.0
+        saliency = saliency / np.max(saliency)
+    
+        # Resize to original size
+        saliency = cv2.resize(saliency, image.shape[1::-1])
+        return saliency
+
 
 class RedCursorEnvironment(Environment):
     # TODO: 0.5 is enough?
     CAMERA_HORIZONTAL_ANGLE_RAND_MAX = 1.0 * CAMERA_HORIZONTAL_ANGLE_MAX
     CAMERA_VERTICAL_ANGLE_RAND_MAX = 1.0 * CAMERA_VERTICAL_ANGLE_MAX
 
-    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False):
+    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False, saliency=False):
         assert content == None # ignore content!!!
         assert skip_red_cursor == False
-        super().__init__(PointToTargetContent(), off_buffer_width, on_buffer_width, False, retina)
+        super().__init__(PointToTargetContent(), off_buffer_width, on_buffer_width, False, retina, saliency)
         self.reaction_step = 0
 
     def step(self, action):
