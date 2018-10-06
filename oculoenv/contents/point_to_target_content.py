@@ -15,8 +15,7 @@ START_MARKER_WIDTH = 0.15  # マーカーの半分の幅 (1.0で画面いっぱ�
 TARGET_WIDTH_SMALL = 0.1
 TARGET_WIDTH_LARGE = 0.2
 
-#MAX_STEP_COUNT = 180 * 60
-MAX_STEP_COUNT = 1 * 60
+MAX_STEP_COUNT = 180 * 60
 
 
 class Quadrant(object):
