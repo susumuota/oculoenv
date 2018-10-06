@@ -144,7 +144,7 @@ class Camera(object):
 class Environment(object):
     """ Task Environmenet class. """
 
-    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False, saliency=False):
+    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False, saliency=False, diff=False):
         """ Oculomotor task environment class.
 
         Arguments:
@@ -164,6 +164,10 @@ class Environment(object):
             self.off_blur_rates, self.off_inv_blur_rates = self._create_rate_datas(off_buffer_width) # 128
             self.off_gray_rates, self.off_inv_gray_rates = self._create_rate_datas(off_buffer_width, gain=0.5) # 128
         self.saliency = saliency
+        self.diff = diff
+        if self.diff:
+            self.prev_frame_buffer_off = None
+            self.prev_frame_buffer_on = None
 
         # Invisible window to render into (shadow OpenGL context)
         self.shadow_window = pyglet.window.Window(
@@ -291,6 +295,10 @@ class Environment(object):
             img = self._get_saliency_map(img)
             img = np.clip(img * 255.0, 0.0, 255.0).astype(np.uint8)
             img = np.stack([img for _ in range(3)], axis=2)
+        if self.diff:
+            org_image = img
+            img = self._get_diff_map(self.prev_frame_buffer_off, img)
+            self.prev_frame_buffer_off = org_image
         return img
 
     def render(self, mode='human', close=False):
@@ -308,6 +316,11 @@ class Environment(object):
             img = self._get_saliency_map(img)
             img = np.clip(img * 255.0, 0.0, 255.0).astype(np.uint8)
             img = np.stack([img for _ in range(3)], axis=2)
+
+        if self.diff:
+            org_image = img
+            img = self._get_diff_map(self.prev_frame_buffer_on, img)
+            self.prev_frame_buffer_on = org_image
 
         if mode == 'rgb_array':
             return img
@@ -536,16 +549,20 @@ class Environment(object):
         saliency = cv2.resize(saliency, image.shape[1::-1])
         return saliency
 
+    def _get_diff_map(self, prev_image, image):
+        if prev_image is None:
+            prev_image = image
+        return cv2.absdiff(prev_image, image)
 
 class RedCursorEnvironment(Environment):
     # TODO: 0.5 is enough?
     CAMERA_HORIZONTAL_ANGLE_RAND_MAX = 1.0 * CAMERA_HORIZONTAL_ANGLE_MAX
     CAMERA_VERTICAL_ANGLE_RAND_MAX = 1.0 * CAMERA_VERTICAL_ANGLE_MAX
 
-    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False, saliency=False):
+    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False, saliency=False, diff=False):
         assert content == None # ignore content!!!
         assert skip_red_cursor == False
-        super().__init__(PointToTargetContent(), off_buffer_width, on_buffer_width, False, retina, saliency)
+        super().__init__(PointToTargetContent(), off_buffer_width, on_buffer_width, False, retina, saliency, diff)
         self.reaction_step = 0
 
     def step(self, action):

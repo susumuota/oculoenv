@@ -43,8 +43,11 @@ class KeyHandler(object):
         self.down_pressed = False
         self.one_pressed = False
         self.two_pressed = False
+        self.three_pressed = False
         self.r_pressed = False
         self.esc_pressed = False
+
+        self.prev_angle = None
         
         pyglet.clock.schedule_interval(self.update, 1.0/60.0)
 
@@ -61,6 +64,8 @@ class KeyHandler(object):
             self.one_pressed = True
         elif symbol == key._2:
             self.two_pressed = True
+        elif symbol == key._3:
+            self.three_pressed = True
         elif symbol == key.R:
             self.r_pressed = True
         elif symbol == key.ESCAPE:
@@ -82,6 +87,8 @@ class KeyHandler(object):
             self.one_pressed = False
         elif symbol == key._2:
             self.two_pressed = False
+        elif symbol == key._3:
+            self.three_pressed = False
         elif symbol == key.R:
             self.r_pressed = False
         elif symbol == key.ESCAPE:
@@ -105,6 +112,8 @@ class KeyHandler(object):
             self.env.retina = not self.env.retina
         if self.two_pressed:
             self.env.saliency = not self.env.saliency
+        if self.three_pressed:
+            self.env.diff = not self.env.diff
         if self.r_pressed:
             self.env.reset()
         if self.esc_pressed:
@@ -116,6 +125,11 @@ class KeyHandler(object):
             action = np.array([dh, dv])
             # Step environment
             obs, reward, done, info = self.env.step(action)
+
+            if obs['angle'] != self.prev_angle:
+                print(obs['angle'])
+            self.prev_angle = obs['angle']
+
             if reward != 0:
                 print("reward = {}".format(reward))
 
@@ -152,6 +166,7 @@ if __name__ == '__main__':
     parser.add_argument('--skip_red_cursor', action='store_true', help='Flag to skip red cursor.')
     parser.add_argument('--retina', action='store_true', help='Flag to use retina image.')
     parser.add_argument('--saliency', action='store_true', help='Flag to use saliency image.')
+    parser.add_argument('--diff', action='store_true', help='Flag to use diff image.')
 
     args = parser.parse_args()
 
@@ -173,7 +188,7 @@ if __name__ == '__main__':
         print("Unknown argument")
         sys.exit(1)
 
-    env = Environment(content, on_buffer_width=128, skip_red_cursor=args.skip_red_cursor, retina=args.retina, saliency=args.saliency) if content else RedCursorEnvironment(None, on_buffer_width=128, retina=args.retina, saliency=args.saliency)
+    env = Environment(content, on_buffer_width=128, skip_red_cursor=args.skip_red_cursor, retina=args.retina, saliency=args.saliency, diff=args.diff) if content else RedCursorEnvironment(None, on_buffer_width=128, retina=args.retina, saliency=args.saliency, diff=args.diff)
     env.render()  # env.window is created here
 
     handler = KeyHandler(env, args.step_debug)
