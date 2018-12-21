@@ -144,7 +144,7 @@ class Camera(object):
 class Environment(object):
     """ Task Environmenet class. """
 
-    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False, saliency=False, diff=False):
+    def __init__(self, content, off_buffer_width=128, on_buffer_width=640, skip_red_cursor=False, retina=False, saliency=False, diff=False, opt_flow=False):
         """ Oculomotor task environment class.
 
         Arguments:
@@ -168,6 +168,10 @@ class Environment(object):
         if self.diff:
             self.prev_frame_buffer_off = None
             self.prev_frame_buffer_on = None
+        self.opt_flow = opt_flow
+        if self.opt_flow:
+            self.optical_flow_off = OpticalFlow(off_buffer_width, off_buffer_width)
+            self.optical_flow_on = OpticalFlow(on_buffer_width, on_buffer_width)
 
         # Invisible window to render into (shadow OpenGL context)
         self.shadow_window = pyglet.window.Window(
@@ -211,7 +215,40 @@ class Environment(object):
             "angle":angle
         }
 
+        if self.opt_flow:
+            optical_flow = self.optical_flow_off.flow
+            fx, fy = optical_flow[:, :, 0], optical_flow[:, :, 1]
+            sumx = np.sum(fx)
+            sumy = np.sum(fy)
+            theta = np.arctan2(sumy, sumx) * 180.0 / np.pi
+            direction = self._theta_to_direction(theta)
+            obs['direction'] = direction
+
         return obs
+
+    def _theta_to_direction(self, theta):
+        # NOOP, UP, RIGHT, LEFT, DOWN, UPRIGHT, UPLEFT, DOWNRIGHT, DOWNLEFT
+        delta = 22.5
+        if theta > (90.0 - delta) and theta < (90.0 + delta):
+            return 1 # UP
+        elif theta > (0.0 - delta) and theta < (0.0 + delta):
+            return 2 # RIGHT
+        elif theta > (180.0 - delta) and theta < (180.0 + delta):
+            return 3 # LEFT # around 180 and -180
+        elif theta > (-180.0 - delta) and theta < (-180.0 + delta):
+            return 3 # LEFT # around 180 and -180
+        elif theta > (-90.0 - delta) and theta < (-90.0 + delta):
+            return 4 # DOWN
+        elif theta > (45.0 - delta) and theta < (45.0 + delta):
+            return 5 # UPRIGHT
+        elif theta > (135.0 - delta) and theta < (135.0 + delta):
+            return 6 # UPLEFT
+        elif theta > (-45.0 - delta) and theta < (-45.0 + delta):
+            return 7 # DOWNRIGHT
+        elif theta > (-135.0 - delta) and theta < (-135.0 + delta):
+            return 8 # DOWNLEFT
+        else:
+            return theta
 
     def reset(self):
         """ Reset environment.
@@ -299,6 +336,8 @@ class Environment(object):
             org_image = img
             img = self._get_diff_map(self.prev_frame_buffer_off, img)
             self.prev_frame_buffer_off = org_image
+        if self.opt_flow:
+            img = self.optical_flow_off.get_optical_flow(img)
         return img
 
     def render(self, mode='human', close=False):
@@ -321,6 +360,9 @@ class Environment(object):
             org_image = img
             img = self._get_diff_map(self.prev_frame_buffer_on, img)
             self.prev_frame_buffer_on = org_image
+
+        if self.opt_flow:
+            img = self.optical_flow_on.get_optical_flow(img)
 
         if mode == 'rgb_array':
             return img
@@ -553,6 +595,89 @@ class Environment(object):
         if prev_image is None:
             prev_image = image
         return cv2.absdiff(prev_image, image)
+
+class OpticalFlow(object):
+    def __init__(self, w=128, h=128):
+        """ Calculating optical flow.
+        Input image can be retina image or saliency map. 
+        """
+        self.last_gray_image = None
+        self.hist_32 = np.zeros((w, h), np.float32)
+        
+        self.inst = cv2.optflow.createOptFlow_DIS(
+            cv2.optflow.DISOPTICAL_FLOW_PRESET_MEDIUM)
+        self.inst.setUseSpatialPropagation(False)
+        self.flow = None
+        
+    def _warp_flow(self, img, flow):
+        h, w = flow.shape[:2]
+        flow = -flow
+        flow[:,:,0] += np.arange(w)
+        flow[:,:,1] += np.arange(h)[:,np.newaxis]
+        res = cv2.remap(img, flow, None, cv2.INTER_LINEAR)
+        return res
+        
+    def process(self, image):
+        if image is None:
+            return image
+
+        gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            
+        if self.last_gray_image is None:
+            self.last_gray_image = gray_image
+
+        if self.flow is not None:
+            self.flow = self.inst.calc(self.last_gray_image,
+                                       gray_image,
+                                       self._warp_flow(self.flow, self.flow))
+        else:
+            self.flow = self.inst.calc(self.last_gray_image,
+                                       gray_image,
+                                       None)
+            # (128, 128, 2)
+        self.last_gray_image = gray_image
+        return self.flow
+
+    def get_optical_flow(self, image):
+        return self.show_optical_flow(self.process(image))
+
+    def show_optical_flow(self, optical_flow):
+        if optical_flow is None:
+            return optical_flow
+        h, w = optical_flow.shape[:2]
+
+        # Show optical flow with HSV color image
+        #image = self.get_optical_flow_hsv(optical_flow)
+        image = np.zeros((h, w, 3), np.uint8)
+
+        # Draw optical flow direction with lines
+        step = w / 8
+
+        y, x = np.mgrid[step // 2:h:step, step // 2:w:step].reshape(
+            2, -1).astype(int)
+        fx, fy = optical_flow[y, x].T * 10
+        lines = np.vstack([x, y, x + fx, y + fy]).T.reshape(-1, 2, 2)
+        lines = np.int32(lines + 0.5)
+
+        cv2.polylines(image, lines, 0, (0, 255, 0), 2)
+        for (x1, y1), (x2, y2) in lines:
+            cv2.circle(image, (x1, y1), 1, (0, 255, 0), 2)
+
+        return image
+
+    def get_optical_flow_hsv(self, optical_flow):
+        if optical_flow is None:
+            return optical_flow
+        h, w = optical_flow.shape[:2]
+        fx, fy = optical_flow[:, :, 0], optical_flow[:, :, 1]
+        ang = np.arctan2(fy, fx) + np.pi
+        v = np.sqrt(fx * fx + fy * fy)
+        hsv = np.zeros((h, w, 3), np.uint8)
+        hsv[..., 0] = ang * (180 / np.pi / 2)
+        hsv[..., 1] = 255
+        hsv[..., 2] = np.minimum(v * 4, 255)
+        image = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+        return image
 
 class RedCursorEnvironment(Environment):
     # TODO: 0.5 is enough?

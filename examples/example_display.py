@@ -44,6 +44,7 @@ class KeyHandler(object):
         self.one_pressed = False
         self.two_pressed = False
         self.three_pressed = False
+        self.four_pressed = False
         self.r_pressed = False
         self.esc_pressed = False
 
@@ -66,6 +67,8 @@ class KeyHandler(object):
             self.two_pressed = True
         elif symbol == key._3:
             self.three_pressed = True
+        elif symbol == key._4:
+            self.four_pressed = True
         elif symbol == key.R:
             self.r_pressed = True
         elif symbol == key.ESCAPE:
@@ -89,6 +92,8 @@ class KeyHandler(object):
             self.two_pressed = False
         elif symbol == key._3:
             self.three_pressed = False
+        elif symbol == key._4:
+            self.four_pressed = False
         elif symbol == key.R:
             self.r_pressed = False
         elif symbol == key.ESCAPE:
@@ -114,6 +119,8 @@ class KeyHandler(object):
             self.env.saliency = not self.env.saliency
         if self.three_pressed:
             self.env.diff = not self.env.diff
+        if self.four_pressed:
+            self.env.opt_flow = not self.env.opt_flow
         if self.r_pressed:
             self.env.reset()
         if self.esc_pressed:
@@ -126,9 +133,9 @@ class KeyHandler(object):
             # Step environment
             obs, reward, done, info = self.env.step(action)
 
-            if obs['angle'] != self.prev_angle:
-                print(obs['angle'])
-            self.prev_angle = obs['angle']
+            #if obs['angle'] != self.prev_angle:
+            #    print(obs['angle'])
+            #self.prev_angle = obs['angle']
 
             if reward != 0:
                 print("reward = {}".format(reward))
@@ -167,6 +174,7 @@ if __name__ == '__main__':
     parser.add_argument('--retina', action='store_true', help='Flag to use retina image.')
     parser.add_argument('--saliency', action='store_true', help='Flag to use saliency image.')
     parser.add_argument('--diff', action='store_true', help='Flag to use diff image.')
+    parser.add_argument('--opt_flow', action='store_true', help='Flag to use optical flow image.')
 
     args = parser.parse_args()
 
@@ -188,7 +196,7 @@ if __name__ == '__main__':
         print("Unknown argument")
         sys.exit(1)
 
-    env = Environment(content, on_buffer_width=128, skip_red_cursor=args.skip_red_cursor, retina=args.retina, saliency=args.saliency, diff=args.diff) if content else RedCursorEnvironment(None, on_buffer_width=128, retina=args.retina, saliency=args.saliency, diff=args.diff)
+    env = Environment(content, on_buffer_width=640, skip_red_cursor=args.skip_red_cursor, retina=args.retina, saliency=args.saliency, diff=args.diff, opt_flow=args.opt_flow) if content else RedCursorEnvironment(None, on_buffer_width=128, retina=args.retina, saliency=args.saliency, diff=args.diff, opt_flow=args.opt_flow)
     env.render()  # env.window is created here
 
     handler = KeyHandler(env, args.step_debug)
